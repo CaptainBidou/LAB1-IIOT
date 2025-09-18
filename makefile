@@ -1,5 +1,5 @@
-all: Cligne_1_Hz
-Cligne_1_Hz: Cligne_1_Hz.c
-        gcc -o lab1 Cligne_1_Hz.c -lbcm2835
+all: Thread_Cligne_10_Hz_time
+Thread_Cligne_10_Hz_time: Thread_Cligne_10_Hz_time.c
+	gcc -o lab1 Thread_Cligne_10_Hz_time.c -lbcm2835 -pthread
 clean:
-        rm -f lab1
+	rm -f lab1

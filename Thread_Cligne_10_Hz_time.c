@@ -15,7 +15,12 @@
 #include <pthread.h>
 #include <time.h>
 
+#define SPI_MISO 23 // Définition du GPIO associé au MISO du SPI (broche 16)
+#define SPI_CS 24 // Définition du GPIO associé au CS du SPI (broche 18)
+#define SPI_SCK 25 // Définition du GPIO associe au SCK du SPI (broche 22)
+
 double frequence = 10.0; // Hertz : fréquence de clignotement désirée
+double frequence_SPI = 5000000.0; 
 
 /* Fonction clignote qui sera appelée par le thread "cligne"
  * 
@@ -24,23 +29,25 @@ double frequence = 10.0; // Hertz : fréquence de clignotement désirée
  * La fonction ne retourne aucune valeur.
  * La fonction n'exige aucun paramètre en entrée.
  */
-void *clignote()
+void *clignote(int broche)
 {
 	clock_t debut, fin; // Variables de temps
 	double demiPer = 1/(2.0*frequence); // Calcul de la demi-période
 	int etat = 0; // État du DEL
+	int nbClock=0;
 	
 	debut = clock(); // Temps écoulé depuis le lancement du programme
 	
 	// Boucle infinie pour le clignotement du DEL
-	while(1){
+	while(nbClock!=32){
 		if (etat==0){
-			bcm2835_gpio_write(20, HIGH);
+			bcm2835_gpio_write(broche, HIGH);
 			etat = 1;
 		}
 		else{
-			bcm2835_gpio_write(20, LOW);
+			bcm2835_gpio_write(broche, LOW);
 			etat = 0;
+			nbClock++;
 		}
 		
 		fin = clock(); // Temps écoulé depuis le lancement du programme
@@ -54,6 +61,95 @@ void *clignote()
 	}
 	pthread_exit(NULL);
 }
+
+
+/* Fonction lecture_SPI qui ser appelee dans le main
+ * 
+ * Elle lit la valeur de la temperature sur le thermocouple
+ *
+ * La fonction retourne la temperature en degres celsius
+ * La fonction n'exige aucun paramètre en entrée.
+ */
+double lecture_SPI(void){
+	//Variable de enregistrement du signal MISO
+	unsigned int sigMiso = 0x00;
+	// Variable de lecture du signal
+	unsigned int readMiso = 0x00;
+	
+	// Configuration du GPIO pour MISO
+	bcm2835_gpio_fsel(SPI_MISO, BCM2835_GPIO_FSEL_INPT);
+	// Configuration du GPIO pour SPI_CS
+	bcm2835_gpio_fsel(SPI_CS, BCM2835_GPIO_FSEL_OUTP);
+	// Configuration du GPIO pour SPI_SCK
+	bcm2835_gpio_fsel(SPI_SCK, BCM2835_GPIO_FSEL_OUTP);
+	
+	
+	// On met le CS a 1
+	bcm2835_gpio_write(SPI_CS, HIGH);
+	
+	
+	
+	//Depart de la routine
+	// On met le CS a 0
+	bcm2835_gpio_write(SPI_CS, LOW);
+	
+	//Routine
+	clock_t debut, fin; // Variables de temps
+	double demiPer = 1/(2.0*frequence_SPI); // Calcul de la demi-période
+	int etat = 0; // État du clock
+	int nbClock=0;
+	
+	debut = clock(); // Temps écoulé depuis le lancement du programme
+	
+	// Boucle infinie pour le clignotement du clock
+	while(nbClock!=32){
+		if (etat==0){
+			bcm2835_gpio_write(SPI_SCK, HIGH);
+			etat = 1;
+		}
+		else{
+			bcm2835_gpio_write(SPI_SCK, LOW);
+			readMiso = bcm2835_gpio_lev(SPI_MISO);
+			if(nbClock!=0)
+				sigMiso=sigMiso<<1;
+			sigMiso = sigMiso+readMiso;
+			
+			
+			etat = 0;
+			nbClock++;
+		}
+		
+		fin = clock(); // Temps écoulé depuis le lancement du programme
+		
+		// La différence (fin-debut) donne le temps d'exécution du code
+		// On cherche une durée égale à demiPer. On compense avec un délai
+		// CLOCK_PER_SEC est le nombre de coups d'horloges en 1 seconde
+		
+		usleep(1000000*(demiPer-((double) (fin-debut)/((double) CLOCKS_PER_SEC))));
+		debut = fin;
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	// Fin de la routine
+	// On remonte le CS a 1
+	bcm2835_gpio_write(SPI_CS, HIGH);
+	
+	unsigned int mask = 0b01111111111100000000000000000000;
+	printf("Masque : %d\n",mask);
+	unsigned int temp = sigMiso&mask;
+	temp = temp>>20;
+	printf("Signal recupere : %d\n",sigMiso);
+	printf("Signal masquee :%d\n",temp);
+	
+}
+
+
 
 /* Fonction main
  * 
@@ -72,6 +168,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
+	lecture_SPI();
 	// Configuration du GPIO pour DEL 1 (rouge)
 	bcm2835_gpio_fsel(20, BCM2835_GPIO_FSEL_OUTP);
 	// Configuration du GPIO pour bouton-poussoir 1
@@ -80,7 +177,7 @@ int main(int argc, char **argv)
 	// Création du thread "cligne".
 	// Lien avec la fonction clignote.
 	// Cette dernière n'exige pas de paramètres.
-	pthread_create(&cligne, NULL, &clignote, NULL);
+	pthread_create(&cligne, NULL, &clignote, 20);
 	
 	// Boucle tant que le bouton-poussoir est non enfoncé
 	while(bcm2835_gpio_lev(19)){

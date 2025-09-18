@@ -23,6 +23,10 @@ int main(void)
 	
 	// Configuration du GPIO pour DEL 1 (rouge)
 	bcm2835_gpio_fsel(DEL_Rouge, BCM2835_GPIO_FSEL_OUTP);
+	
+	// Configuration du GPIO pour DEL 2 (orange)
+	bcm2835_gpio_fsel(DEL_Orange, BCM2835_GPIO_FSEL_OUTP);
+	
 
 	// Appuie sur les deux boutons pour continuer
 	//while(!bcm2835_gpio_lev(Bouton_Rouge) && !bcm2835_gpio_lev(Bouton_Noir)){
@@ -30,25 +34,25 @@ int main(void)
 
 	// Clignoter DEL:
 	// DEL allumée 500 ms et éteinte 500 ms
-	while(!bcm2835_gpio_lev(Bouton_Noir)){
+	while((bcm2835_gpio_lev(Bouton_Noir)&&bcm2835_gpio_lev(Bouton_Rouge))){
 		bcm2835_gpio_write(DEL_Rouge, HIGH);
-		//bcm2835_gpio_write(DEL_Orange, LOW);
-		bcm2835_delay(500);
+		bcm2835_gpio_write(DEL_Orange, LOW);
+		//bcm2835_delay(500);
 
 		//Fréquence de clignotement à 0.1Hz
-		// bcm2835_delay(5000);
+		bcm2835_delay(5000);
 
 		bcm2835_gpio_write(DEL_Rouge, LOW);
-		//bcm2835_gpio_write(DEL_Orange, HIGH);
-		bcm2835_delay(500);
+		bcm2835_gpio_write(DEL_Orange, HIGH);
+		//bcm2835_delay(500);
 
 		// Fréquence de clignotement à 0.1 Hz
-		// bcm2835_delay(5000);
+		bcm2835_delay(5000);
 	}
 	
 	//S'assurer que les DEL sont éteintes avant de quitter
-	//bcm2835_gpio_write(DEL_Rouge, LOW);
-	//bcm2835_gpio_write(DEL_Orange, LOW);
+	bcm2835_gpio_write(DEL_Rouge, LOW);
+	bcm2835_gpio_write(DEL_Orange, LOW);
 
 	// Libérer les broches du GPIO
 	bcm2835_close();
