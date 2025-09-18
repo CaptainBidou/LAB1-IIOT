@@ -110,11 +110,7 @@ double lecture_SPI(void){
 		else{
 			bcm2835_gpio_write(SPI_SCK, LOW);
 			readMiso = bcm2835_gpio_lev(SPI_MISO);
-			if(nbClock!=0)
-				sigMiso=sigMiso<<1;
-			sigMiso = sigMiso+readMiso;
-			
-			
+			sigMiso = (sigMiso << 1) | readMiso;
 			etat = 0;
 			nbClock++;
 		}
@@ -129,24 +125,33 @@ double lecture_SPI(void){
 		debut = fin;
 	}
 	
-	
-	
-	
-	
-	
-	
-	
 	// Fin de la routine
 	// On remonte le CS a 1
 	bcm2835_gpio_write(SPI_CS, HIGH);
 	
-	unsigned int mask = 0b01111111111100000000000000000000;
-	printf("Masque : %d\n",mask);
-	unsigned int temp = sigMiso&mask;
-	temp = temp>>20;
-	printf("Signal recupere : %d\n",sigMiso);
-	printf("Signal masquee :%d\n",temp);
+	unsigned int maskENT = 0b01111111111100000000000000000000;
+	unsigned int maskDEC = 0b00000000000011000000000000000000;
+	unsigned int maskNEG = 0b10000000000000000000000000000000;
+	unsigned int tempENT = sigMiso&maskENT;
+	unsigned int tempDEC = sigMiso&maskDEC;
+	double temp = 0.0;
+	// Verification de la temperature negative
+	if((sigMiso&maskNEG)>>31==1){
+		temp = -1*(~((tempENT>>20)*1.0+(tempDEC>>18)*0.25))+1;
+		
+	}
+	else{
+		temp = (tempENT>>20)*1.0+(tempDEC>>18)*0.25;
+	}
 	
+	
+	printf("Signal recupere : %d\n",sigMiso);
+	printf("Signal masquee :%f\n",temp);
+	
+	// Libérer le GPIO
+    bcm2835_close();
+
+	return (double)temp;
 }
 
 
