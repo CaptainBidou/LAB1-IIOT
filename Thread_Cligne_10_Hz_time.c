@@ -21,7 +21,7 @@
 
 double frequence = 10.0; // Hertz : fréquence de clignotement désirée
 double frequence_SPI = 4000000.0; // Hertz : fréquence du SPI
-double RANGE = 200; // valeur du RANGE du pwm
+double RANGE = 1500; // valeur du RANGE du pwm
 double erreurK_1 = 0;
 double erreurK_2 = 0;
 
@@ -197,7 +197,7 @@ int consigne_temperature(){
 
 void pwmThread(){
 	int range = RANGE;
-	int d = 3;
+	int d = 256;
 	int dutyCycle = 0;
 	bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_ALT5);
 	bcm2835_pwm_set_clock(d);
@@ -208,13 +208,13 @@ void pwmThread(){
 	while(1){
 		while(dutyCycle < range){
 			bcm2835_pwm_set_data(0,dutyCycle);
-			dutyCycle ++;
+			dutyCycle= (range/100) + dutyCycle;
 			usleep(10000);
 			printf("dutyCycle = %d\n",dutyCycle);
 		}
 		while(dutyCycle>0){
 			bcm2835_pwm_set_data(0,dutyCycle);
-			dutyCycle = dutyCycle-1;
+			dutyCycle = (range/100) - dutyCycle;
 			usleep(10000);
 			printf("dutyCycle = %d\n",dutyCycle);
 		}
