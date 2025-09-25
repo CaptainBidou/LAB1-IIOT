@@ -22,6 +22,7 @@
 double frequence = 10.0; // Hertz : fréquence de clignotement désirée
 double frequence_SPI = 4000000.0; // Hertz : fréquence du SPI
 double RANGE = 1500; // valeur du RANGE du pwm
+double D = BCM2835_PWM_CLOCK_DIVIDER_256; // valeur du d du pwm 
 double erreurK_1 = 0;
 double erreurK_2 = 0;
 
@@ -76,19 +77,9 @@ double lecture_SPI(void){
 	unsigned int sigMiso = 0x00;
 	// Variable de lecture du signal
 	unsigned int readMiso = 0x00;
-	
-	// Configuration du GPIO pour MISO
-	bcm2835_gpio_fsel(SPI_MISO, BCM2835_GPIO_FSEL_INPT);
-	// Configuration du GPIO pour SPI_CS
-	bcm2835_gpio_fsel(SPI_CS, BCM2835_GPIO_FSEL_OUTP);
-	// Configuration du GPIO pour SPI_SCK
-	bcm2835_gpio_fsel(SPI_SCK, BCM2835_GPIO_FSEL_OUTP);
-	
-	
+		
 	// On met le CS a 1
 	bcm2835_gpio_write(SPI_CS, HIGH);
-	
-	
 	
 	//Depart de la routine
 	// On met le CS a 0
@@ -196,25 +187,17 @@ int consigne_temperature(){
 
 
 void pwmThread(){
-	int range = RANGE;
-	int d = 256;
-	int dutyCycle = 0;
-	bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_ALT5);
-	bcm2835_pwm_set_clock(d);
-	bcm2835_pwm_set_mode(0,1,1);
-	bcm2835_pwm_set_range(0, range);
-	bcm2835_pwm_set_data(0,0);
-	
+	double dutyCycle = 0;
 	while(1){
-		while(dutyCycle < range){
+		while(dutyCycle < RANGE){
 			bcm2835_pwm_set_data(0,dutyCycle);
-			dutyCycle= (range/100) + dutyCycle;
+			dutyCycle= (RANGE/100) + dutyCycle;
 			usleep(10000);
 			printf("dutyCycle = %d\n",dutyCycle);
 		}
 		while(dutyCycle>0){
 			bcm2835_pwm_set_data(0,dutyCycle);
-			dutyCycle = (range/100) - dutyCycle;
+			dutyCycle = (RANGE/100) - dutyCycle;
 			usleep(10000);
 			printf("dutyCycle = %d\n",dutyCycle);
 		}
@@ -262,19 +245,21 @@ int main(int argc, char **argv)
 	// Configuration du GPIO pour bouton-poussoir 1
 	bcm2835_gpio_fsel(19, BCM2835_GPIO_FSEL_INPT);
 	
-	int range = 600;
-	int d = 3;
+	//configuration du GPIO pour la sortie PWM0
 	bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_ALT5);
-	bcm2835_pwm_set_clock(d);
+	bcm2835_pwm_set_clock(D);
 	bcm2835_pwm_set_mode(0,1,1);
-	bcm2835_pwm_set_range(0, range);
+	bcm2835_pwm_set_range(0, RANGE);
 	bcm2835_pwm_set_data(0,0);
-	bcm2835_pwm_set_data(0,600);
-	printf("test\n");
+
+	// Configuration du GPIO pour MISO
+	bcm2835_gpio_fsel(SPI_MISO, BCM2835_GPIO_FSEL_INPT);
+	// Configuration du GPIO pour SPI_CS
+	bcm2835_gpio_fsel(SPI_CS, BCM2835_GPIO_FSEL_OUTP);
+	// Configuration du GPIO pour SPI_SCK
+	bcm2835_gpio_fsel(SPI_SCK, BCM2835_GPIO_FSEL_OUTP);
 	
-	// Création du thread "cligne".
-	// Lien avec la fonction clignote.
-	// Cette dernière n'exige pas de paramètres.
+	// Création des threads
 	pthread_create(&cligne, NULL, &clignote, 20);
 	pthread_create(&temperature, NULL, &temperatureThread, NULL);
 	pthread_create(&pwm, NULL, &pwmThread,NULL);
@@ -291,6 +276,7 @@ int main(int argc, char **argv)
     pthread_cancel(cligne);
     pthread_cancel(temperature);
     pthread_cancel(pwm);
+
     // Attente de l'arrêt du thread
     pthread_join(cligne, NULL);
     pthread_join(temperature, NULL);
@@ -298,6 +284,8 @@ int main(int argc, char **argv)
     
     // Éteindre le DEL rouge
     bcm2835_gpio_write(20, LOW);
+	// Éteindre le PWM
+	bcm2835_pwm_set_data(0,0);
     // Libérer le GPIO
     bcm2835_close();
     return 0;
