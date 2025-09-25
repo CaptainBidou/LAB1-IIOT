@@ -22,6 +22,8 @@
 double frequence = 10.0; // Hertz : fréquence de clignotement désirée
 double frequence_SPI = 4000000.0; // Hertz : fréquence du SPI
 double RANGE = 200; // valeur du RANGE du pwm
+double erreurK_1 = 0;
+double erreurK_2 = 0;
 
 /* Fonction clignote qui sera appelée par le thread "cligne"
  * 
@@ -159,6 +161,34 @@ int commande_Thermo(double consigne, double mesure){
 	else{
 		return RANGE; // Chauffage active
 	}
+}
+
+int commande_PID(double consigne, double mesure, double gainKp, double gainKi, double gainKd){
+	double erreur = consigne - mesure;
+	consigne = consigne + gainKp*(erreur-erreurK_1) + (gainKi*1/2)(erreur+erreurK_1) + (gainKd/2)*(erreur - 2*erreurK_1 + erreurK_2);
+	erreurK_2 = erreurK_1;
+	erreurK_1 = erreur;
+
+	if (consigne < 0){
+		return 0; // Chauffage desactive
+	}
+	else if (consigne > RANGE){
+		return RANGE; // Chauffage active
+	}
+	else{
+		return (int)consigne;
+	}
+}
+
+int consigne_temperature(){
+	while(1){
+		int consigne = commande_Thermo(25, lecture_SPI());
+		// int consigne = commande_PID(25, lecture_SPI(), 5, 0.1, 1);
+		printf("Consigne : %d\n",consigne);
+		bcm2835_pwm_set_data(0,consigne);
+		sleep(1);
+	}
+
 }
 
 
