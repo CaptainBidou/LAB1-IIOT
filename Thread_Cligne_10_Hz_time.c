@@ -144,7 +144,13 @@ double lecture_SPI(void){
 	return (double)temp;
 }
 
-
+/* Fonction commande_Thermo qui sera appelee depuis un thread
+ * 
+ * Elle active ou desactive le chauffage selon la consigne et la mesure
+ *
+ * La fonction retourne 0 si le chauffage est desactive et RANGE si il est active
+ * La fonction exige en entrée la consigne et la mesure de temperature.
+*/
 int commande_Thermo(double consigne, double mesure){
 	if(consigne < mesure){
 		return 0; // Chauffage desactive
@@ -154,6 +160,15 @@ int commande_Thermo(double consigne, double mesure){
 	}
 }
 
+/* Fonction commande_PID qui sera appelee depuis un thread
+ * 
+ * Elle active ou desactive le chauffage selon la consigne et la mesure
+ * en utilisant un controleur PID
+ *
+ * La fonction retourne une valeur entre 0 et RANGE pour le chauffage
+ * La fonction exige en entrée la consigne, la mesure de temperature,
+ * le gain proportionnel, le gain integrale et le gain derive.
+*/
 int commande_PID(double consigne, double mesure, double gainKp, double gainKi, double gainKd){
 	double erreur = consigne - mesure;
 	consigne = consigne + gainKp*(erreur-erreurK_1) + (gainKi*1/2)*(erreur+erreurK_1) + (gainKd/2)*(erreur - 2*erreurK_1 + erreurK_2);
@@ -171,12 +186,25 @@ int commande_PID(double consigne, double mesure, double gainKp, double gainKi, d
 	}
 }
 
+/* Fonction consigne_temperature qui sera appelee dans le main
+ * 
+ * Elle lit la temperature et ajuste la consigne du chauffage
+ *
+ * La fonction ne retourne aucune valeur.
+ * La fonction n'exige aucun paramètre en entrée.
+*/
 int consigne_temperature(){
-	while(1){
-		int consigne = commande_Thermo(25, lecture_SPI());
-		// int consigne = commande_PID(25, lecture_SPI(), 5, 0.1, 1);
-		printf("Consigne : %d\n",consigne);
+	/*while(1){
+		double mesure = lecture_SPI();
+		int consigne = commande_Thermo(25, mesure);
+		// int consigne = commande_PID(25, mesure, 5, 0.1, 1);
+		printf("Consigne : %d\t /Mesure : %f\n",consigne,mesure);
 		bcm2835_pwm_set_data(0,consigne);
+		sleep(1);
+	}*/
+	bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_OUTP);
+	while(1){
+		bcm2835_gpio_write(18, HIGH);
 		sleep(1);
 	}
 
@@ -185,7 +213,11 @@ int consigne_temperature(){
 
 
 
-
+/**
+ * Fonction pwmThread qui permet de faire varier la luminosite de la lampe
+ * La fonction ne retourne aucune valeur.
+ * La fonction n'exige aucun paramètre en entrée.
+ */
 void pwmThread(){
 	int dutyCycle = 0;
 	while(1){
@@ -209,17 +241,41 @@ void pwmThread(){
 	
 }
 
+/* Fonction writeTemptoFile qui sera appelee dans un thread
+ * 
+ * Elle ecrit la temperature dans un fichier texte
+ *
+ * La fonction ne retourne aucune valeur.
+ * La fonction exige en entrée la temperature a ecrire.
+*/
+void writeTemptoFile(double temp){
+	FILE *fptr;
+	fptr = fopen("temperature.txt", "a");
+	if(fptr == NULL){
+		printf("Erreur lors de l'ouverture du fichier\n");
+		return;
+	}
+	fprintf(fptr, "%f\n", temp);
+	fclose(fptr);
+}
 
-
+/**
+ * Fonction temperatureThread qui permet de lire la temperature
+ * La fonction ne retourne aucune valeur.
+ * La fonction n'exige aucun paramètre en entrée.
+ */
 void temperatureThread(void){
 	
 	while(1){
 		double temp = lecture_SPI();
 		printf("Temperature :%f C\n",temp);
+		writeTemptoFile(temp);
 		sleep(1);
 		}
 	
 }
+
+
 
 /* Fonction main
  * 
@@ -263,7 +319,8 @@ int main(int argc, char **argv)
 	// Création des threads
 	pthread_create(&cligne, NULL, &clignote, 20);
 	pthread_create(&temperature, NULL, &temperatureThread, NULL);
-	pthread_create(&pwm, NULL, &pwmThread,NULL);
+	//pthread_create(&pwm, NULL, &pwmThread,NULL);
+	pthread_create(&pwm, NULL, &consigne_temperature,NULL);
 	
 	
 	
