@@ -156,7 +156,7 @@ int commande_Thermo(double consigne, double mesure){
 
 int commande_PID(double consigne, double mesure, double gainKp, double gainKi, double gainKd){
 	double erreur = consigne - mesure;
-	consigne = consigne + gainKp*(erreur-erreurK_1) + (gainKi*1/2)(erreur+erreurK_1) + (gainKd/2)*(erreur - 2*erreurK_1 + erreurK_2);
+	consigne = consigne + gainKp*(erreur-erreurK_1) + (gainKi*1/2)*(erreur+erreurK_1) + (gainKd/2)*(erreur - 2*erreurK_1 + erreurK_2);
 	erreurK_2 = erreurK_1;
 	erreurK_1 = erreur;
 
@@ -187,17 +187,18 @@ int consigne_temperature(){
 
 
 void pwmThread(){
-	double dutyCycle = 0;
+	int dutyCycle = 0;
 	while(1){
+		dutyCycle = 0;
 		while(dutyCycle < RANGE){
 			bcm2835_pwm_set_data(0,dutyCycle);
 			dutyCycle= (RANGE/100) + dutyCycle;
 			usleep(10000);
 			printf("dutyCycle = %d\n",dutyCycle);
 		}
-		while(dutyCycle>0){
+		while(dutyCycle>2){
 			bcm2835_pwm_set_data(0,dutyCycle);
-			dutyCycle = (RANGE/100) - dutyCycle;
+			dutyCycle =  dutyCycle -(RANGE/100);
 			usleep(10000);
 			printf("dutyCycle = %d\n",dutyCycle);
 		}
@@ -286,6 +287,10 @@ int main(int argc, char **argv)
     bcm2835_gpio_write(20, LOW);
 	// Éteindre le PWM
 	bcm2835_pwm_set_data(0,0);
+	
+	bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_OUTP);
+	bcm2835_gpio_write(18, HIGH);
+	
     // Libérer le GPIO
     bcm2835_close();
     return 0;
