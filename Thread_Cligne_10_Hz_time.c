@@ -194,20 +194,14 @@ int commande_PID(double consigne, double mesure, double gainKp, double gainKi, d
  * La fonction n'exige aucun paramètre en entrée.
 */
 int consigne_temperature(){
-	/*while(1){
+	while(1){
 		double mesure = lecture_SPI();
 		int consigne = commande_Thermo(25, mesure);
 		// int consigne = commande_PID(25, mesure, 5, 0.1, 1);
 		printf("Consigne : %d\t /Mesure : %f\n",consigne,mesure);
 		bcm2835_pwm_set_data(0,consigne);
 		sleep(1);
-	}*/
-	bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_OUTP);
-	while(1){
-		bcm2835_gpio_write(18, HIGH);
-		sleep(1);
 	}
-
 }
 
 
@@ -240,25 +234,6 @@ void pwmThread(){
 		//bcm2835_gpio_write(18, HIGH);
 	
 }
-
-/* Fonction writeTemptoFile qui sera appelee dans un thread
- * 
- * Elle ecrit la temperature dans un fichier texte
- *
- * La fonction ne retourne aucune valeur.
- * La fonction exige en entrée la temperature a ecrire.
-*/
-void writeTemptoFile(double temp){
-	FILE *fptr;
-	fptr = fopen("temperature.txt", "a");
-	if(fptr == NULL){
-		printf("Erreur lors de l'ouverture du fichier\n");
-		return;
-	}
-	fprintf(fptr, "%f\n", temp);
-	fclose(fptr);
-}
-
 /**
  * Fonction temperatureThread qui permet de lire la temperature
  * La fonction ne retourne aucune valeur.
@@ -269,7 +244,6 @@ void temperatureThread(void){
 	while(1){
 		double temp = lecture_SPI();
 		printf("Temperature :%f C\n",temp);
-		writeTemptoFile(temp);
 		sleep(1);
 		}
 	
@@ -288,7 +262,7 @@ int main(int argc, char **argv)
 {
 	// Identificateur du thread
 	pthread_t cligne;
-	pthread_t temperature;  
+	//pthread_t temperature;  
 	pthread_t pwm;
 	
 	// Initialisation du bcm2835
@@ -318,7 +292,7 @@ int main(int argc, char **argv)
 	
 	// Création des threads
 	pthread_create(&cligne, NULL, &clignote, 20);
-	pthread_create(&temperature, NULL, &temperatureThread, NULL);
+	//pthread_create(&temperature, NULL, &temperatureThread, NULL);
 	//pthread_create(&pwm, NULL, &pwmThread,NULL);
 	pthread_create(&pwm, NULL, &consigne_temperature,NULL);
 	
@@ -332,12 +306,12 @@ int main(int argc, char **argv)
 
 	// Si bouton-poussoir enfoncé, arrêt immédiat du thread 
     pthread_cancel(cligne);
-    pthread_cancel(temperature);
+    //pthread_cancel(temperature);
     pthread_cancel(pwm);
 
     // Attente de l'arrêt du thread
     pthread_join(cligne, NULL);
-    pthread_join(temperature, NULL);
+    //pthread_join(temperature, NULL);
     pthread_join(pwm, NULL);
     
     // Éteindre le DEL rouge
