@@ -4,7 +4,7 @@ IP=10.192.153.10
 # utilisateur du rpi
 USER=pi
 # nom du dossier a envoyer
-DIR=LAB1
+DIR=LAB2
 
 # envoie le dossier
 scp -r $DIR $USER@$IP:~/Desktop/$DIR
