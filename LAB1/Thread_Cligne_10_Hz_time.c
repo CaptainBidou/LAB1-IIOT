@@ -25,6 +25,7 @@ double RANGE = 1500; // valeur du RANGE du pwm
 double D = BCM2835_PWM_CLOCK_DIVIDER_256; // valeur du d du pwm 
 double erreurK_1 = 0;
 double erreurK_2 = 0;
+int commande = 0;
 
 /* Fonction clignote qui sera appelée par le thread "cligne"
  * 
@@ -75,8 +76,6 @@ void *clignote(int broche)
 double lecture_SPI(void){
 	//Variable de enregistrement du signal MISO
 	unsigned int sigMiso = 0x00;
-	// Variable de lecture du signal
-	unsigned int readMiso = 0x00;
 		
 	// On met le CS a 1
 	bcm2835_gpio_write(SPI_CS, HIGH);
@@ -85,61 +84,40 @@ double lecture_SPI(void){
 	// On met le CS a 0
 	bcm2835_gpio_write(SPI_CS, LOW);
 	
-	//Routine
-	clock_t debut, fin; // Variables de temps
-	double demiPer = 1/(2.0*frequence_SPI); // Calcul de la demi-période
-	int etat = 0; // État du clock
 	int nbClock=0;
-	
-	debut = clock(); // Temps écoulé depuis le lancement du programme
 	
 	// Boucle infinie pour le clignotement du clock
 	while(nbClock!=32){
-		if (etat==0){
+		
+			//etat haut du sck
 			bcm2835_gpio_write(SPI_SCK, HIGH);
-			readMiso = bcm2835_gpio_lev(SPI_MISO);
-			readMiso = readMiso & 0b00000000000000000000000000000001;
-			sigMiso = (sigMiso << 1) + readMiso;
-			etat = 1;
-		}
-		else{
+			sigMiso = (sigMiso << 1) + bcm2835_gpio_lev(SPI_MISO);// Décalage de sigMiso et ajout du bit lu
+			sleep(1/(2.0*frequence_SPI));
+			//etat bas du sck
 			bcm2835_gpio_write(SPI_SCK, LOW);
-			etat = 0;
 			nbClock++;
-		}
-		
-		fin = clock(); // Temps écoulé depuis le lancement du programme
-		
-		// La différence (fin-debut) donne le temps d'exécution du code
-		// On cherche une durée égale à demiPer. On compense avec un délai
-		// CLOCK_PER_SEC est le nombre de coups d'horloges en 1 seconde
-		
-		usleep(1000000*(demiPer-((double) (fin-debut)/((double) CLOCKS_PER_SEC))));
-		debut = fin;
+			sleep(1/(2.0*frequence_SPI));
 	}
 	
 	// Fin de la routine
 	// On remonte le CS a 1
 	bcm2835_gpio_write(SPI_CS, HIGH);
 	
-	unsigned int maskENT = 0b01111111111100000000000000000000;
-	unsigned int maskDEC = 0b00000000000011000000000000000000;
-	unsigned int maskNEG = 0b10000000000000000000000000000000;
+
+	// On extrait la temperature du signal MISO
+	unsigned int maskENT = 0b01111111111100000000000000000000;// Masque pour les bits de la partie entiere
+	unsigned int maskDEC = 0b00000000000011000000000000000000;// Masque pour les bits de la partie decimale
+	unsigned int maskNEG = 0b10000000000000000000000000000000;// Masque pour le bit de signe
 	unsigned int tempENT = sigMiso&maskENT;
 	unsigned int tempDEC = sigMiso&maskDEC;
 	double temp = 0.0;
 	// Verification de la temperature negative
 	if((sigMiso&maskNEG)>>31==1){
 		temp = (double)(-1*(~(unsigned int)((tempENT>>20)*1.0+(tempDEC>>18)*0.25))+1);
-		
 	}
 	else{
 		temp = (double)((tempENT>>20)*1.0)+(double)((tempDEC>>18)*0.25);
 	}
-	
-	
-	//printf("Signal recupere : %d\n",sigMiso);
-	//printf("Signal traite :%f\n",temp);
 
 	return (double)temp;
 }
@@ -171,18 +149,20 @@ int commande_Thermo(double consigne, double mesure){
 */
 int commande_PID(double consigne, double mesure, double gainKp, double gainKi, double gainKd){
 	double erreur = consigne - mesure;
-	consigne = consigne + gainKp*(erreur-erreurK_1) + (gainKi*1/2)*(erreur+erreurK_1) + (gainKd/2)*(erreur - 2*erreurK_1 + erreurK_2);
+	commande = commande + gainKp*(erreur-erreurK_1) + (gainKi*1/2)*(erreur+erreurK_1) + (gainKd/2)*(erreur - 2*erreurK_1 + erreurK_2);
 	erreurK_2 = erreurK_1;
 	erreurK_1 = erreur;
 
-	if (consigne < 0){
+	if (commande < 0){
+		commande = RANGE;
 		return 0; // Chauffage desactive
 	}
-	else if (consigne > RANGE){
+	else if (commande > RANGE){
+		commande = RANGE;
 		return RANGE; // Chauffage active
 	}
 	else{
-		return (int)consigne;
+		return (int)commande;
 	}
 }
 
@@ -196,10 +176,10 @@ int commande_PID(double consigne, double mesure, double gainKp, double gainKi, d
 int consigne_temperature(){
 	while(1){
 		double mesure = lecture_SPI();
-		int consigne = commande_Thermo(25, mesure);
-		// int consigne = commande_PID(25, mesure, 5, 0.1, 1);
-		printf("Consigne : %d\t /Mesure : %f\n",consigne,mesure);
-		bcm2835_pwm_set_data(0,consigne);
+		//int consigne = commande_Thermo(28, mesure);
+		int commande_pwm = commande_PID(44, mesure, 10, 10, 0.2);
+		printf("commande : %d\t /Mesure : %f\n",commande_pwm,mesure);
+		bcm2835_pwm_set_data(0,commande_pwm);
 		sleep(1);
 	}
 }
@@ -220,19 +200,13 @@ void pwmThread(){
 			bcm2835_pwm_set_data(0,dutyCycle);
 			dutyCycle= (RANGE/100) + dutyCycle;
 			usleep(10000);
-			printf("dutyCycle = %d\n",dutyCycle);
 		}
 		while(dutyCycle>2){
 			bcm2835_pwm_set_data(0,dutyCycle);
 			dutyCycle =  dutyCycle -(RANGE/100);
 			usleep(10000);
-			printf("dutyCycle = %d\n",dutyCycle);
 		}
 		  }
-		
-		//bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_OUTP);
-		//bcm2835_gpio_write(18, HIGH);
-	
 }
 /**
  * Fonction temperatureThread qui permet de lire la temperature
@@ -262,7 +236,7 @@ int main(int argc, char **argv)
 {
 	// Identificateur du thread
 	pthread_t cligne;
-	//pthread_t temperature;  
+	pthread_t temperature;  
 	pthread_t pwm;
 	
 	// Initialisation du bcm2835
