@@ -27,7 +27,8 @@
 #define MQTT_TOPIC_ACTION_LED_JAUNE "actionneur/led/jaune"
 #define MQTT_TOPIC_ACTION_BOUTON_ROUGE "actionneur/bouton/rouge"
 #define MQTT_TOPIC_BOUTON_ROUGE "capteur/bouton/rouge"
-#define MQTT_TOPIC_BOUTON_NOIR "capteur/bouton/noir
+#define MQTT_TOPIC_BOUTON_NOIR "capteur/bouton/noir"
+#define MQTT_TOPIC_ACTION_PID_CONSIGNE "actionneur/PID/consigne"
 
 
 #define SPI_MISO 23 // Définition du GPIO associé au MISO du SPI (broche 16)
@@ -282,7 +283,7 @@ void publieur_MQTT_complet(){
 	while(1){
 		// Publication de la temperature lue
 		sprintf(text, "%5.2f C", temp);
-		ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC1, strlen(text), text, MQTT_QoS, false);
+		ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_TEMPERATURE, strlen(text), text, MQTT_QoS, false);
 		if (ret)
 		{
 			fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
@@ -291,7 +292,7 @@ void publieur_MQTT_complet(){
 
         // Publication de la consigne
         sprintf(text, "%5.2f C", consigne_PID);
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC2, strlen(text), text, MQTT_QoS, false);
+        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_PID_CONSIGNE, strlen(text), text, MQTT_QoS, false);
         if (ret)
         {
             fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
@@ -300,7 +301,7 @@ void publieur_MQTT_complet(){
 
         // Publication de la PWM
         sprintf(text, "%5.2f %%", pwm_PID);
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC3, strlen(text), text, MQTT_QoS, false);
+        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_PID_PWM, strlen(text), text, MQTT_QoS, false);
         if (ret)
         {
             fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
@@ -385,6 +386,11 @@ void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquit
         exit(0);
 		
 	}
+    if (!strcmp(message->topic,MQTT_TOPIC_ACTION_PID_CONSIGNE))
+    {
+        printf("Changement de la consigne du PID : %lf C.\n",valeur);
+        consigne_PID = valeur;
+    }
     
 }
 void abonne_MQTT_complet(){
