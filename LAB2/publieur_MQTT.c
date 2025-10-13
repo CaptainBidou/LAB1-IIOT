@@ -19,6 +19,7 @@
 #define SPI_CS 24 // Définition du GPIO associé au CS du SPI (broche 18)
 #define SPI_SCK 25 // Définition du GPIO associe au SCK du SPI (broche 22)
 
+#define MQTT_QoS 1
 #define MQTT_HOSTNAME "localhost"
 #define MQTT_PORT 1883
 #define MQTT_TOPIC1 "capteur/zone1/temperature"
@@ -131,7 +132,7 @@ int main(int argc, char **argv)
 		double temp = lecture_SPI();
 		// Publication de la temperature lue
 		sprintf(text, "%5.2f C", temp);
-		ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC1, strlen(text), text, 0, false);
+		ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC1, strlen(text), text, MQTT_QoS, false);
 		if (ret)
 		{
 			fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
@@ -140,7 +141,7 @@ int main(int argc, char **argv)
 		sleep(1);
 	}
 	sprintf(text, "1");
-	ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC3, strlen(text), text, 0, false);
+	ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC3, strlen(text), text, MQTT_QoS, false);
 	if (ret)
 		{
 			fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
