@@ -1,6 +1,6 @@
 # envoie le dossier sur le Desktop et le compile avec le makefile sur le rpi avec ssh 
 # adresse ip du rpi
-IP=10.192.153.10
+IP=10.206.216.153
 # utilisateur du rpi
 USER=pi
 # nom du dossier a envoyer

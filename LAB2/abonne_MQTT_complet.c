@@ -1,8 +1,8 @@
 /*
- * abonne_MQTT.c
+ * abonne_MQTT_complet.c
  * 
  * 
- * Lokman Sboui et Guy Gauthier
+ * Tomas Salvado Robalo et Samuel Dupuis
  * 
  */
  
@@ -12,19 +12,19 @@
 #include <string.h>
 #include <mosquitto.h>
 
-#define MQTT_HOSTNAME "localhost"
+#define MQTT_HOSTNAME "10.187.27.153"//Adresse IP du serveur Mosquitto
 #define MQTT_QoS 2
 #define MQTT_PORT 1883
-#define MQTT_TOPIC_TEMPERATURE "capteur/PID/temperature"// on écoute
-#define MQTT_TOPIC_PID_CONSIGNE "capteur/PID/consigne"  // on écoute
-#define MQTT_TOPIC_PID_PWM "capteur/PID/pwm"// on écoute
-#define MQTT_TOPIC_LED_ROUGE "capteur/led/rouge"// on écoute
-#define MQTT_TOPIC_LED_JAUNE "capteur/led/jaune"// on écoute
-#define MQTT_TOPIC_ACTION_LED_ROUGE "actionneur/led/rouge"// on écoute pas
-#define MQTT_TOPIC_ACTION_LED_JAUNE "actionneur/led/jaune"// on écoute pas
-#define MQTT_TOPIC_ACTION_BOUTON_ROUGE "actionneur/bouton/rouge"// on écoute pas 
-#define MQTT_TOPIC_BOUTON_ROUGE "capteur/bouton/rouge"// On écoute
-#define MQTT_TOPIC_BOUTON_NOIR "capteur/bouton/noir" // On écoute 
+#define MQTT_TOPIC_TEMPERATURE "capteur/PID/temperature"//TOPIC de la temperature mesurée
+#define MQTT_TOPIC_PID_CONSIGNE "capteur/PID/consigne"  // TOPIC de la consigne du PID définie dans le code
+#define MQTT_TOPIC_PID_PWM "capteur/PID/pwm"//TOPIC de la valeur PWM du PID calculée
+#define MQTT_TOPIC_LED_ROUGE "capteur/led/rouge"// value de la LED rouge mesurée
+#define MQTT_TOPIC_LED_JAUNE "capteur/led/jaune"// value de la LED jaune mesurée
+#define MQTT_TOPIC_ACTION_LED_ROUGE "actionneur/led/rouge"// action sur la lED rouge demandée
+#define MQTT_TOPIC_ACTION_LED_JAUNE "actionneur/led/jaune"// action sur la LED jaune demandée
+#define MQTT_TOPIC_ACTION_BOUTON_ROUGE "actionneur/bouton/rouge"// action sur le bouton rouge demandée
+#define MQTT_TOPIC_BOUTON_ROUGE "capteur/bouton/rouge"//   value du bouton rouge mesurée
+#define MQTT_TOPIC_BOUTON_NOIR "capteur/bouton/noir" //value du bouton noir mesurée
 
 void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message)
 {
@@ -38,16 +38,27 @@ void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquit
         printf("La temperature de la lampe est de %lf C.\n",valeur);
     }
 
-	if (!strcmp(message->topic,MQTT_BOUTON_ROUGE))
+	if (!strcmp(message->topic,MQTT_TOPIC_BOUTON_ROUGE))
 	{
-		printf("Le bouton rouge a été pressé \n");
-        mosquitto_destroy(mosq);
-	    mosquitto_lib_cleanup();
-		exit(0);
+        if(valeur==1){
+            printf("Le bouton rouge a été pressé \n");
+            mosquitto_destroy(mosq);
+	        mosquitto_lib_cleanup();
+		    exit(0);
+        }
+        else{
+            printf("Le bouton rouge a été relâché \n");
+        }
+		
 	}
-    if (!strcmp(message->topic,MQTT_BOUTON_NOIR))
+    if (!strcmp(message->topic,MQTT_TOPIC_BOUTON_NOIR))
     {
-        printf("Le bouton noir a été pressé \n");
+       if(valeur==1){
+            printf("Le bouton noir a été pressé \n");
+        }
+        else{
+            printf("Le bouton noir a été relâché \n");
+        }
     }
     if (!strcmp(message->topic,MQTT_TOPIC_PID_CONSIGNE))
     {

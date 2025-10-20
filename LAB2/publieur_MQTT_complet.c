@@ -13,22 +13,20 @@
 #include <string.h>
 #include <mosquitto.h>
 
-#define ARRET 0
-
-#define MQTT_HOSTNAME "localhost"
+#define MQTT_HOSTNAME "10.187.27.153"//Adresse IP du serveur Mosquitto
 #define MQTT_QoS 2
 #define MQTT_PORT 1883
-#define MQTT_TOPIC_TEMPERATURE "capteur/PID/temperature"
-#define MQTT_TOPIC_PID_CONSIGNE "capteur/PID/consigne"
-#define MQTT_TOPIC_PID_PWM "capteur/PID/pwm"
-#define MQTT_TOPIC_LED_ROUGE "capteur/led/rouge"
-#define MQTT_TOPIC_LED_JAUNE "capteur/led/jaune"
-#define MQTT_TOPIC_ACTION_LED_ROUGE "actionneur/led/rouge"
-#define MQTT_TOPIC_ACTION_LED_JAUNE "actionneur/led/jaune"
-#define MQTT_TOPIC_ACTION_BOUTON_ROUGE "actionneur/bouton/rouge"
-#define MQTT_TOPIC_BOUTON_ROUGE "capteur/bouton/rouge"
-#define MQTT_TOPIC_BOUTON_NOIR "capteur/bouton/noir"
-#define MQTT_TOPIC_ACTION_PID_CONSIGNE "actionneur/PID/consigne"
+#define MQTT_TOPIC_TEMPERATURE "capteur/PID/temperature"//TOPIC de la temperature mesurée
+#define MQTT_TOPIC_PID_CONSIGNE "capteur/PID/consigne"  // TOPIC de la consigne du PID définie dans le code
+#define MQTT_TOPIC_PID_PWM "capteur/PID/pwm"//TOPIC de la valeur PWM du PID calculée
+#define MQTT_TOPIC_LED_ROUGE "capteur/led/rouge"// value de la LED rouge mesurée
+#define MQTT_TOPIC_LED_JAUNE "capteur/led/jaune"// value de la LED jaune mesurée
+#define MQTT_TOPIC_ACTION_LED_ROUGE "actionneur/led/rouge"// action sur la lED rouge demandée
+#define MQTT_TOPIC_ACTION_LED_JAUNE "actionneur/led/jaune"// action sur la LED jaune demandée
+#define MQTT_TOPIC_ACTION_BOUTON_ROUGE "actionneur/bouton/rouge"// action sur le bouton rouge demandée
+#define MQTT_TOPIC_BOUTON_ROUGE "capteur/bouton/rouge"//   value du bouton rouge mesurée
+#define MQTT_TOPIC_BOUTON_NOIR "capteur/bouton/noir" //value du bouton noir mesurée
+#define MQTT_TOPIC_ACTION_PID_CONSIGNE "actionneur/PID/consigne"// action sur la consigne du PID demandée
 
 
 #define SPI_MISO 23 // Définition du GPIO associé au MISO du SPI (broche 16)
@@ -41,55 +39,29 @@ double RANGE = 1500; // valeur du RANGE du pwm
 double D = BCM2835_PWM_CLOCK_DIVIDER_256; // valeur du d du pwm 
 double erreurK_1 = 0;
 double erreurK_2 = 0;
-int commande = 0;
+int commande = 0;//valeur de la commande calculée 
+int ARRET=0;//commande d'arret
 
-double consigne_PID =24;
-double temperature_PID =0;
-double pwm_PID =0;
+double consigne_PID_save = 0;//valeur de la consigne à l'état n-1
+double consigne_PID =24;//valeur de la consigne à l'état n
 
-int led_rouge=0;
-int led_jaune=0;
+double temperature_PID_save = 0;// valeur de la température à l'état n-1
+double temperature_PID =0;// valeur de la température à l'état n
 
-/* Fonction clignote qui sera appelée par le thread "cligne"
- * 
- * Elle fait clignoter le DEL rouge à 1 Hertz.
- *
- * La fonction ne retourne aucune valeur.
- * La fonction n'exige aucun paramètre en entrée.
- */
-void *clignote(int broche)
-{
-	clock_t debut, fin; // Variables de temps
-	double demiPer = 1/(2.0*frequence); // Calcul de la demi-période
-	int etat = 0; // État du DEL
-	
-	debut = clock(); // Temps écoulé depuis le lancement du programme
-	
-	// Boucle infinie pour le clignotement du DEL
-	while(1){
-		if (etat==0){
-			bcm2835_gpio_write(broche, HIGH);
-			etat = 1;
-            led_rouge=1;
-		}
-		else{
-			bcm2835_gpio_write(broche, LOW);
-			etat = 0;
-            led_rouge=0;
-		}
-		
-		fin = clock(); // Temps écoulé depuis le lancement du programme
-		
-		// La différence (fin-debut) donne le temps d'exécution du code
-		// On cherche une durée égale à demiPer. On compense avec un délai
-		// CLOCK_PER_SEC est le nombre de coups d'horloges en 1 seconde
-		
-		usleep(1000000*(demiPer-((double) (fin-debut)/((double) CLOCKS_PER_SEC))));
-		debut = fin;
-	}
-	pthread_exit(NULL);
-}
+double pwm_PID =0;//valeur de la commande à l'état n
+double pwm_PID_save=24;// valeur de la commande à l'état n-1
 
+int led_rouge_save = 1;//valeur de la led rouge à l'état n-1
+int led_rouge=0;//valeur de la led rouge à l'état n
+
+int led_jaune_save = 1;//valeur de la led jaune à l'état n-1
+int led_jaune=0;//valeur de la led jaune à l'état n
+
+int bouton_rouge_save=1;//valeur du bouton rouge à l'état n-1
+int bouton_rouge=0;//valeur du bouton rouge à l'état n
+
+int bouton_noir_save=0;//valeur du bouton noir à l'état n-1
+int bouton_noir=0;//valeur du bouton noir à l'état n
 
 /* Fonction lecture_SPI qui ser appelee dans le main
  * 
@@ -147,22 +119,6 @@ double lecture_SPI(void){
 	return (double)temp;
 }
 
-/* Fonction commande_Thermo qui sera appelee depuis un thread
- * 
- * Elle active ou desactive le chauffage selon la consigne et la mesure
- *
- * La fonction retourne 0 si le chauffage est desactive et RANGE si il est active
- * La fonction exige en entrée la consigne et la mesure de temperature.
-*/
-int commande_Thermo(double consigne, double mesure){
-	if(consigne < mesure){
-		return 0; // Chauffage desactive
-	}
-	else{
-		return RANGE; // Chauffage active
-	}
-}
-
 /* Fonction commande_PID qui sera appelee depuis un thread
  * 
  * Elle active ou desactive le chauffage selon la consigne et la mesure
@@ -179,7 +135,7 @@ int commande_PID(double consigne, double mesure, double gainKp, double gainKi, d
 	erreurK_1 = erreur;
 
 	if (commande < 0){
-		commande = RANGE;
+		commande = 0;
 		return 0; // Chauffage desactive
 	}
 	else if (commande > RANGE){
@@ -235,119 +191,18 @@ void pwmThread(){
 		}
 		  }
 }
+
+
+
 /**
- * Fonction temperatureThread qui permet de lire la temperature
+ * Fonction my_message_callback qui sera appelee a la reception d'un message MQTT
  * La fonction ne retourne aucune valeur.
- * La fonction n'exige aucun paramètre en entrée.
+ * La fonction exige en entrée le pointeur vers la structure mosquitto, un pointeur vers un objet utilisateur
+ * et un pointeur vers la structure mosquitto_message contenant le message recu.
+ * 
+ * La fonction traite les messages recus sur les topics d'action et met a jour les variables globales
+ * en consequence.
  */
-void temperatureThread(void){
-	
-	while(1){
-		double temp = lecture_SPI();
-		printf("Temperature :%f C\n",temp);
-		sleep(1);
-		}
-	
-}
-void clean_MQTT(int status, void *arg) {
-    // Cast du void* générique vers le type spécifique mosquitto *
-    struct mosquitto *mosq = (struct mosquitto *)arg;
-    mosquitto_destroy(mosq);
-    mosquitto_lib_cleanup();
-}
-
-
-void publieur_MQTT_complet(){
-    
-    char text[40];
-	int ret;
-	struct mosquitto *mosq = NULL;
-    mosquitto_lib_init();
-	
-	
-
-	mosq = mosquitto_new(NULL, true, NULL);
-    on_exit(clean_MQTT,mosq);
-	if (!mosq)
-	{
-		fprintf(stderr,"Ne peut initialiser la librairie de Mosquitto\n");
-		exit(-1);
-	}
-	
-	ret = mosquitto_connect(mosq, MQTT_HOSTNAME, MQTT_PORT, 60);
-	if (ret)
-	{
-		fprintf(stderr,"Ne peut se connecter au serveur Mosquitto\n");
-		exit(-1);
-	}
-	while(1){
-		// Publication de la temperature lue
-		sprintf(text, "%5.2f C", temp);
-		ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_TEMPERATURE, strlen(text), text, MQTT_QoS, false);
-		if (ret)
-		{
-			fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-			exit(-1);
-		}
-
-        // Publication de la consigne
-        sprintf(text, "%5.2f C", consigne_PID);
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_PID_CONSIGNE, strlen(text), text, MQTT_QoS, false);
-        if (ret)
-        {
-            fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-            exit(-1);
-        }
-
-        // Publication de la PWM
-        sprintf(text, "%5.2f %%", pwm_PID);
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_PID_PWM, strlen(text), text, MQTT_QoS, false);
-        if (ret)
-        {
-            fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-            exit(-1);
-        }
-
-        // Publication de l'état de la LED rouge
-        sprintf(text, "%d", led_rouge);
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_LED_ROUGE, strlen(text), text, MQTT_QoS, false);
-        if (ret)
-        {
-            fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-            exit(-1);
-        }
-
-        // Publication de l'état de la LED jaune
-        sprintf(text, "%d", led_jaune);
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_LED_JAUNE, strlen(text), text, MQTT_QoS, false);
-        if (ret)
-        {
-            fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-            exit(-1);
-        }
-
-        // Publication de l'état du bouton rouge
-        sprintf(text, "%d", bcm2835_gpio_lev(19));
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_BOUTON_ROUGE, strlen(text), text, MQTT_QoS, false);
-        if (ret)
-        {
-            fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-            exit(-1);
-        }
-
-        // Publication de l'état du bouton noir
-        sprintf(text, "%d", bcm2835_gpio_lev(26)); // Supposons que le bouton noir est connecté au GPIO 26
-        ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_BOUTON_NOIR, strlen(text), text, MQTT_QoS, false);
-        if (ret)
-        {
-            fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-            exit(-1);
-        }
-
-		sleep(1);
-	}
-}
-
 void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message)
 {
 	char *ptr;
@@ -355,90 +210,56 @@ void my_message_callback(struct mosquitto *mosq, void *obj, const struct mosquit
 	printf("Message : %s\n", (char*) message->payload);
 	
 	double valeur = strtod(message->payload,&ptr);
+
+	// On demande un changement d'état de la LED rouge
 	if (!strcmp(message->topic,MQTT_TOPIC_ACTION_LED_ROUGE))
     {
         printf("Changement état LED rouge : %lf \n",valeur);
         led_rouge = (int)valeur;
+		//On veut allumer la LED rouge
         if (led_rouge==1){
             bcm2835_gpio_write(20, HIGH);
         }
+		//On veut éteindre la LED rouge
         else{
             bcm2835_gpio_write(20, LOW);
         }
     }
+	// On demande un changement d'état de la LED jaune
 	if (!strcmp(message->topic,MQTT_TOPIC_ACTION_LED_JAUNE))
     {
         printf("Changement état LED jaune : %lf \n",valeur);
         led_jaune = (int)valeur;
+		//On veut allumer la LED jaune
         if (led_jaune==1){
-            // Allumer la LED jaune
+            bcm2835_gpio_write(21, HIGH);
         }
+		//On veut éteindre la LED jaune
         else{
-            // Éteindre la LED jaune
+            bcm2835_gpio_write(21, LOW);
         }
     }
+	// On demande un changement d'état du bouton rouge
     if (!strcmp(message->topic,MQTT_TOPIC_ACTION_BOUTON_ROUGE))
 	{
-		printf("Le bouton rouge a été pressé \n");
-        mosquitto_destroy(mosq);
-	    mosquitto_lib_cleanup();
-        ARRET=1;
-        exit(0);
-		
+		bouton_rouge=(int)valeur;
+		//On veut simuler l'appui sur le bouton rouge
+		if (bouton_rouge==1){
+            printf("Le bouton rouge a été pressé \n");
+        }
+		//On veut simuler le relachement du bouton rouges
+        else{
+            printf("Le bouton rouge a été relaché \n");
+        }
+	
 	}
+	// On demande un changement de la consigne du PID
     if (!strcmp(message->topic,MQTT_TOPIC_ACTION_PID_CONSIGNE))
     {
         printf("Changement de la consigne du PID : %lf C.\n",valeur);
         consigne_PID = valeur;
     }
     
-}
-void abonne_MQTT_complet(){
-    atexit(clean_MQTT);
-    char text[40];
-    int ret;
-	struct mosquitto *mosq = NULL;
-	
-	mosquitto_lib_init();
-
-	mosq = mosquitto_new(NULL, true, NULL);
-	if (!mosq)
-	{
-		fprintf(stderr,"Ne peut initialiser la librairie de Mosquitto\n");
-		exit(-1);
-	}
-	mosquitto_message_callback_set(mosq, my_message_callback);
-	ret = mosquitto_connect(mosq, MQTT_HOSTNAME, MQTT_PORT, 60);
-	if (ret)
-	{
-		fprintf(stderr,"Ne peut se connecter au serveur Mosquitto\n");
-		exit(-1);
-	}
-	
-	ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_LED_JAUNE , MQTT_QoS);
-	if (ret)
-	{
-		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-		exit(-1);
-	}
-	ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_LED_ROUGE, MQTT_QoS);
-	if (ret)
-	{
-		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-		exit(-1);
-	}
-    ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_BOUTON_ROUGE, MQTT_QoS);
-	if (ret)
-	{
-		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
-		exit(-1);
-	}
-	
-	
-	mosquitto_loop_start(mosq);
-	while(1);
-	
-
 }
 
 /* Fonction main
@@ -451,11 +272,7 @@ void abonne_MQTT_complet(){
 int main(int argc, char **argv)
 {
 	// Identificateur du thread
-	pthread_t cligne;
-	pthread_t temperature;  
-	pthread_t pwm;
-    pthread_t mqtt_publisher;
-    pthread_t mqtt_subscriber;
+	pthread_t pwm;  
 	
 	// Initialisation du bcm2835
 	if (!bcm2835_init()){
@@ -465,6 +282,7 @@ int main(int argc, char **argv)
 	
 	// Configuration du GPIO pour DEL 1 (rouge)
 	bcm2835_gpio_fsel(20, BCM2835_GPIO_FSEL_OUTP);
+	bcm2835_gpio_fsel(21, BCM2835_GPIO_FSEL_OUTP);
 	// Configuration du GPIO pour bouton-poussoir 1
 	bcm2835_gpio_fsel(19, BCM2835_GPIO_FSEL_INPT);
 	
@@ -483,40 +301,187 @@ int main(int argc, char **argv)
 	bcm2835_gpio_fsel(SPI_SCK, BCM2835_GPIO_FSEL_OUTP);
 	
 	// Création des threads
-	pthread_create(&cligne, NULL, &clignote, 20);
 	//pthread_create(&temperature, NULL, &temperatureThread, NULL);
 	//pthread_create(&pwm, NULL, &pwmThread,NULL);
 	pthread_create(&pwm, NULL, &consigne_temperature,NULL);
 
-    pthread_create(&mqtt_publisher, NULL, &publieur_MQTT_thread, NULL);
-    pthread_create(&mqtt_subscriber, NULL, &abonne_MQTT_thread, NULL);
-
 
 	
 	
 	
 	
-	// Boucle tant que le bouton-poussoir est non enfoncé
-	while(ARRET==0){
-		usleep(1000); // Délai de 1 ms !!!
+	char text[40];//chaine de caractere pour stocker le message a publier
+	int ret;//variable de retour des fonctions mosquitto
+	struct mosquitto *mosq = NULL;//structure mosquitto
+    mosquitto_lib_init();//initialisation de la librairie mosquitto
+	mosq = mosquitto_new(NULL, true, NULL);//creation d'une nouvelle instance mosquitto
+	if (!mosq)// verification de la creation de l'instance
+	{
+		fprintf(stderr,"Ne peut initialiser la librairie de Mosquitto\n");
+		exit(-1);
 	}
 
-	// Si bouton-poussoir enfoncé, arrêt immédiat du thread 
-    pthread_cancel(cligne);
-    //pthread_cancel(temperature);
-    pthread_cancel(pwm);
-    pthread_cancel(mqtt_publisher);
-    pthread_cancel(mqtt_subscriber);
+	//definition de la fonction de rappel pour la reception des messages
+	mosquitto_message_callback_set(mosq, my_message_callback);
 
-    // Attente de l'arrêt du thread
-    pthread_join(cligne, NULL);
-    //pthread_join(temperature, NULL);
+	//connexion au serveur mosquitto
+	ret = mosquitto_connect(mosq, MQTT_HOSTNAME, MQTT_PORT, 60);
+	if (ret)
+	{
+		fprintf(stderr,"Ne peut se connecter au serveur Mosquitto\n");
+		exit(-1);
+	}
+	
+	//abonnement au topic d'action de la LED jaune
+	ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_LED_JAUNE , MQTT_QoS);
+	if (ret)
+	{
+		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+		exit(-1);
+	}
+	//abonnement au topic d'action de la LED rouge
+	ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_LED_ROUGE, MQTT_QoS);
+	if (ret)
+	{
+		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+		exit(-1);
+	}
+	//abonnement au topic d'action du bouton rouge
+    ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_BOUTON_ROUGE, MQTT_QoS);
+	if (ret)
+	{
+		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+		exit(-1);
+	}
+	//abonnement au topic d'action de la consigne du PID
+	ret = mosquitto_subscribe(mosq, NULL, MQTT_TOPIC_ACTION_PID_CONSIGNE, MQTT_QoS);
+	if (ret)
+	{
+		fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+		exit(-1);
+	}
+	//demarrage de la boucle de traitement de la réception des messages MQTT
+	mosquitto_loop_start(mosq);
+
+	//debut de la boucle principale de publication des messages MQTT
+	while(ARRET==0){
+		// On publie uniquement si la valeur a changé depuis la dernière publication pour ne pas surcharger le brocker MQTT
+
+
+
+		// Publication de la température lue
+		if(temperature_PID != temperature_PID_save){//si la température a changé
+			temperature_PID_save = temperature_PID;//on met à jour la valeur sauvegardée
+			sprintf(text, "%5.2f", temperature_PID_save);//on prépare le message à publier
+			ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_TEMPERATURE, strlen(text), text, MQTT_QoS, false);//on publie le message
+			if (ret)
+			{
+				fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+				exit(-1);
+			}
+		}
+		
+		// Publication de la consigne du PID
+		if(consigne_PID != consigne_PID_save){//si la consigne a changé
+			//on met à jour la valeur sauvegardée
+			consigne_PID_save = consigne_PID;
+			// Publication de la consigne
+       		sprintf(text, "%5.2f", consigne_PID);
+        	ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_PID_CONSIGNE, strlen(text), text, MQTT_QoS, false);
+        	if (ret)
+        	{
+            	fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+            	exit(-1);
+        	}
+		}
+        
+		// Publication de la PWM du PID
+		if(pwm_PID != pwm_PID_save){//si la PWM a changé
+			pwm_PID_save = pwm_PID;
+			// Publication de la PWM
+        	sprintf(text, "%5.2f", pwm_PID);
+        	ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_PID_PWM, strlen(text), text, MQTT_QoS, false);
+        	if (ret)
+        	{
+            	fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+            	exit(-1);
+        	}
+		}
+        
+		// Publication de l'état de la LED rouge
+		if(led_rouge != led_rouge_save){//si l'état de la LED rouge a changé
+			led_rouge_save = led_rouge;
+			// Publication de l'état de la LED rouge
+        	sprintf(text, "%d", led_rouge);
+        	ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_LED_ROUGE, strlen(text), text, MQTT_QoS, false);
+        	if (ret)
+        	{
+            	fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+           		exit(-1);
+        	}
+		}
+        
+		// Publication de l'état de la LED jaune
+		if(led_jaune != led_jaune_save){//si l'état de la LED jaune a changé
+			led_jaune_save = led_jaune;
+			// Publication de l'état de la LED jaune
+			sprintf(text, "%d", led_jaune);
+			ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_LED_JAUNE, strlen(text), text, MQTT_QoS, false);
+			if (ret)
+			{
+				fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+				exit(-1);
+			}
+		}
+		// Publication de l'état du bouton noir
+		if(!bcm2835_gpio_lev(19) != bouton_noir_save){//si l'état du bouton noir a changé
+			bouton_noir_save = !bcm2835_gpio_lev(19);
+			
+			sprintf(text, "%d", bouton_noir_save);
+			ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_BOUTON_NOIR, strlen(text), text, MQTT_QoS, false);
+			if (ret)
+			{
+				fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+				exit(-1);
+			}
+		}
+
+		// Publication de l'état du bouton rouge si le bouton physique ou virtuel a changé
+		if((!bcm2835_gpio_lev(26) != bouton_rouge_save)||(bouton_rouge != bouton_rouge_save) ){
+			//arrêt si le bouton physique est pressé ou si le bouton virtuel est pressé
+			if(!bcm2835_gpio_lev(26)==1 || bouton_rouge==1)
+				ARRET=1;
+			//mise à jour de l'état du bouton rouge si le bouton physique a changé
+			if(!bcm2835_gpio_lev(26) != bouton_rouge_save)
+				bouton_rouge_save = !bcm2835_gpio_lev(26);
+			//mise à jour de l'état du bouton rouge si le bouton virtuel a changé
+			else if(bouton_rouge != bouton_rouge_save)
+				bouton_rouge_save = bouton_rouge;
+			
+			
+			
+			sprintf(text, "%d", bouton_rouge_save); //préparation du message à publier
+			ret = mosquitto_publish(mosq, NULL, MQTT_TOPIC_BOUTON_ROUGE, strlen(text), text, MQTT_QoS, false);
+			if (ret)
+			{
+				fprintf(stderr,"Ne peut publier sur le serveur Mosquitto\n");
+				exit(-1);
+			}
+		}
+
+		sleep(1);//attente avant la prochaine itération pour ne pas surcharger le CLient MQTT
+	}
+
+	//arrêt de la boucle de traitement des messages MQTT
+	mosquitto_loop_stop(mosq, true);
+	//libération de la structure mosquitto
+	mosquitto_destroy(mosq);
+	mosquitto_lib_cleanup();
+	
+	//arrêt des threads
+    pthread_cancel(pwm);
     pthread_join(pwm, NULL);
-    pthread_join(mqtt_publisher, NULL);
-    pthread_join(mqtt_subscriber, NULL);
     
-    // Éteindre le DEL rouge
-    bcm2835_gpio_write(20, LOW);
 	// Éteindre le PWM
 	bcm2835_pwm_set_data(0,0);
 	
